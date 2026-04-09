@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guitar Fretboard Scale Viewer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0d1117;
+    color: #e0e0e0;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 20px;
+    font-weight: 500;
+    color: #c8a96e;
+    margin-bottom: 18px;
+    letter-spacing: 1px;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 16px;
+    align-items: flex-end;
+  }
+  .control-group { display: flex; flex-direction: column; gap: 4px; }
+  .control-group label {
+    font-size: 11px; color: #888;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  select {
+    background: #1c2030; color: #e0e0e0;
+    border: 1px solid #444; border-radius: 6px;
+    padding: 7px 10px; font-size: 14px;
+    cursor: pointer; outline: none; min-width: 160px;
+  }
+  select:focus { border-color: #c8a96e; }
+  .zoom-group { display: flex; flex-direction: column; gap: 4px; }
+  .zoom-group label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+  .zoom-btns { display: flex; gap: 6px; align-items: center; }
+  .zoom-btn {
+    background: #1c2030; color: #c8a96e;
+    border: 1px solid #444; border-radius: 6px;
+    width: 32px; height: 32px; font-size: 18px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .zoom-btn:hover { background: #2a3050; }
+  .zoom-label { font-size: 13px; color: #aaa; min-width: 36px; text-align: center; }
+  .toggle-switch { display: inline-flex; align-items: center; cursor: pointer; }
+  .toggle-switch input { display: none; }
+  .toggle-track {
+    width: 44px; height: 24px; background: #2a2a3a;
+    border-radius: 12px; border: 1px solid #444;
+    position: relative; transition: background 0.2s;
+  }
+  .toggle-switch input:checked + .toggle-track { background: #3a5a9a; border-color: #6080c0; }
+  .toggle-thumb {
+    position: absolute; top: 3px; left: 3px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #888; transition: left 0.2s, background 0.2s;
+  }
+  .toggle-switch input:checked + .toggle-track .toggle-thumb { left: 23px; background: #c8a96e; }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    justify-content: center; margin-bottom: 14px; font-size: 12px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    display: inline-block; border: 1px solid rgba(255,255,255,0.2);
+  }
+
+  .fretboard-container { overflow-x: auto; padding: 10px 0 10px; }
+  canvas { display: block; margin: 0 auto; }
+
+  .scale-table-wrap { overflow-x: auto; margin-top: 22px; }
+  table.scale-table {
+    border-collapse: collapse; margin: 0 auto; font-size: 13px;
+  }
+  table.scale-table td {
+    border: 1px solid #2a2a3a; padding: 7px 11px;
+    text-align: center; min-width: 42px; white-space: nowrap;
+  }
+  .row-label {
+    background: #161824; color: #888; font-size: 11px;
+    font-weight: 400; text-transform: uppercase;
+    letter-spacing: 0.4px; text-align: right;
+    padding-right: 10px; border-color: #2a2a3a !important;
+  }
+  /* Row 1 & 2: neutral, bold only for in-scale */
+  .deg-in    { background: #1a1a28; color: #ccc; font-weight: 700; }
+  .deg-out   { background: #111118; color: #666; font-weight: 400; }
+  /* Row 2 note cells */
+  .note-in   { background: #1a1a28; color: #ccc; font-weight: 700; }
+  .note-out  { background: #111118; color: #666; font-weight: 400; }
+  /* Row 3 interval cells — coloured */
+  .cell-root  { background: #6a1a1a; color: #fff; font-weight: 700; border-color: #e05050 !important; }
+  .cell-third { background: #5a4a08; color: #f0e060; font-weight: 700; border-color: #c8a830 !important; }
+  .cell-fifth { background: #0d3d1e; color: #6ee89a; font-weight: 700; border-color: #3aaa5a !important; }
+  .cell-blue5 { background: #0a3878; color: #b8dcff; font-weight: 700; border-color: #60b0ff !important; }
+  .cell-scale { background: #2e2e2e; color: #e8e8e8; font-weight: 700; border-color: #888 !important; }
+  .cell-out   { background: #0e0e16; color: #666; font-weight: 400; }
+</style>
+</head>
+<body>
+<h1>Guitar Fretboard — Scale &amp; Interval Viewer</h1>
+
+<div class="controls">
+  <div class="control-group">
+    <label>Root Key</label>
+    <select id="keySelect">
+      <option value="C">C</option>
+      <option value="C#">C# / D♭</option>
+      <option value="D">D</option>
+      <option value="D#">D# / E♭</option>
+      <option value="E">E</option>
+      <option value="F">F</option>
+      <option value="F#">F# / G♭</option>
+      <option value="G">G</option>
+      <option value="G#">G# / A♭</option>
+      <option value="A">A</option>
+      <option value="A#">A# / B♭</option>
+      <option value="B">B</option>
+    </select>
+  </div>
+  <div class="control-group">
+    <label>Scale Type</label>
+    <select id="scaleSelect">
+      <option value="major">Major (Ionian)</option>
+      <option value="minor">Natural Minor (Aeolian)</option>
+      <option value="harmonicMinor">Harmonic Minor</option>
+      <option value="melodicMinor">Melodic Minor (Ascending)</option>
+      <option value="pentatonicMajor">Pentatonic Major</option>
+      <option value="pentatonicMinor" selected>Pentatonic Minor</option>
+      <option value="blues">Blues</option>
+      <option value="dorian">Dorian</option>
+      <option value="phrygian">Phrygian</option>
+      <option value="lydian">Lydian</option>
+      <option value="mixolydian">Mixolydian</option>
+      <option value="locrian">Locrian</option>
+      <option value="dorianb2">Phrygian ♮6 (Dorian ♭2)</option>
+      <option value="lydianAug">Lydian Augmented</option>
+      <option value="lydianDom">Lydian Dominant</option>
+      <option value="mixolydianb6">Mixolydian ♭6</option>
+      <option value="locrianN2">Locrian ♮2</option>
+      <option value="alteredScale">Altered Scale (Super Locrian)</option>
+      <option value="wholeTone">Whole Tone</option>
+      <option value="diminished">Diminished (HW)</option>
+      <option value="diminishedWH">Diminished (WH)</option>
+      <option value="chromatic">Chromatic</option>
+      <option value="rootOnly">Root Note Only</option>
+    </select>
+  </div>
+  <div class="zoom-group">
+    <label>Zoom</label>
+    <div class="zoom-btns">
+      <button class="zoom-btn" id="zoomOut">−</button>
+      <span class="zoom-label" id="zoomLabel">100%</span>
+      <button class="zoom-btn" id="zoomIn">+</button>
+    </div>
+  </div>
+  <div class="control-group" style="justify-content:flex-end;">
+    <label>Scale notes only</label>
+    <label class="toggle-switch">
+      <input type="checkbox" id="hideOutOfScale">
+      <span class="toggle-track"><span class="toggle-thumb"></span></span>
+    </label>
+  </div>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><span class="legend-dot" style="background:#9a2020;border-color:#e05050;"></span> Root (R)</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#7a6010;border-color:#d4c44a;"></span> 3rd / ♭3 (in scale)</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#164a28;border-color:#4caf73;"></span> 5th (in scale)</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#0a3878;border-color:#60b0ff;"></span> ♭5/♯4 (blues only)</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#2e2e2e;border-color:#888;"></span> In scale</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#111118;border-color:#333;"></span> Out of scale</div>
+</div>
+
+<div class="fretboard-container">
+  <canvas id="fretboard"></canvas>
+</div>
+
+<div class="scale-table-wrap">
+  <table class="scale-table" id="scaleTable"></table>
+</div>
+
+<script>
+const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const ENHARMONIC = ['C','C#/D♭','D','D#/E♭','E','F','F#/G♭','G','G#/A♭','A','A#/B♭','B'];
+const INTERVAL_NAMES = ['R','b2','2','b3','3','4','b5','5','b6','6','b7','7'];
+
+const SCALES = {
+  major:           [0,2,4,5,7,9,11],
+  minor:           [0,2,3,5,7,8,10],
+  harmonicMinor:   [0,2,3,5,7,8,11],
+  melodicMinor:    [0,2,3,5,7,9,11],
+  pentatonicMajor: [0,2,4,7,9],
+  pentatonicMinor: [0,3,5,7,10],
+  blues:           [0,3,5,6,7,10],
+  dorian:          [0,2,3,5,7,9,10],
+  phrygian:        [0,1,3,5,7,8,10],
+  lydian:          [0,2,4,6,7,9,11],
+  mixolydian:      [0,2,4,5,7,9,10],
+  locrian:         [0,1,3,5,6,8,10],
+  dorianb2:        [0,1,3,5,7,9,10],
+  lydianAug:       [0,2,4,6,8,9,11],
+  lydianDom:       [0,2,4,6,7,9,10],
+  mixolydianb6:    [0,2,4,5,7,8,10],
+  locrianN2:       [0,2,3,5,6,8,10],
+  alteredScale:    [0,1,3,4,6,8,10],
+  wholeTone:       [0,2,4,6,8,10],
+  diminished:      [0,1,3,4,6,7,9,10],
+  diminishedWH:    [0,2,3,5,6,8,9,11],
+  chromatic:       [0,1,2,3,4,5,6,7,8,9,10,11],
+  rootOnly:        [0],
+};
+
+const OPEN_STRINGS = [4, 11, 7, 2, 9, 4]; // e B G D A E (high e = index 0)
+const STRING_GAUGES = [0.009, 0.011, 0.016, 0.024, 0.032, 0.042];
+const STRING_NAMES = ['e','B','G','D','A','E'];
+const NUM_FRETS = 22;
+const INLAY_FRETS = [3,5,7,9,12,15,17,19,21];
+const DOUBLE_FRETS = [12];
+
+let zoom = 1.0;
+
+function getNoteColor(interval, inScale, isBlues) {
+  const isRoot     = interval === 0;
+  const isThird    = interval === 3 || interval === 4;
+  const isFifth    = interval === 7;
+  const isDimFifth = interval === 6;
+
+  if (isRoot) {
+    return inScale
+      ? { bg:'#9a2020', border:'#e05050', text:'#fff', bold:true }
+      : { bg:'rgba(154,32,32,0.35)', border:'rgba(224,80,80,0.5)', text:'rgba(240,160,160,0.82)', bold:false };
+  }
+  if (isThird    && inScale) return { bg:'#7a6010', border:'#d4c44a', text:'#f0e060', bold:true };
+  if (isFifth    && inScale) return { bg:'#164a28', border:'#4caf73', text:'#7ee89a', bold:true };
+  if (isDimFifth && inScale && isBlues) return { bg:'#0a3878', border:'#60b0ff', text:'#b8dcff', bold:true };
+  if (inScale)  return { bg:'#2e2e2e', border:'#888888', text:'#e8e8e8', bold:true };
+  return { bg:'rgba(30,30,46,0.75)', border:'rgba(110,110,140,0.55)', text:'rgba(190,190,210,0.68)', bold:false };
+}
+
+function draw() {
+  const canvas    = document.getElementById('fretboard');
+  const key       = document.getElementById('keySelect').value;
+  const scaleName = document.getElementById('scaleSelect').value;
+  const rootIdx   = NOTES.indexOf(key);
+  const scaleIntervals = SCALES[scaleName];
+  const isBlues   = scaleName === 'blues';
+  const hideOut   = document.getElementById('hideOutOfScale').checked;
+
+  // Layout
+  const leftPad     = 46;
+  const rightPad    = 18;
+  const topPad      = 28;
+  const bottomPad   = 52; // extra room for fret numbers further down
+  const strSpacing  = 36;
+  const boardHeight = strSpacing * 5;
+
+  const fretRatio = Math.pow(2, 1/12);
+  const scaleLen  = 1180;
+  let fretPos = [0];
+  let rem = scaleLen;
+  for (let f = 1; f <= NUM_FRETS; f++) {
+    rem = rem / fretRatio;
+    fretPos.push(scaleLen - rem);
+  }
+  const maxX = fretPos[NUM_FRETS];
+  fretPos = fretPos.map(x => (x / maxX) * scaleLen);
+
+  const baseW = leftPad + scaleLen + rightPad;
+  const baseH = topPad + boardHeight + bottomPad;
+
+  // Cap dpr at 2 to avoid hitting Safari's canvas size limits on Retina iPhones
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssW = Math.round(baseW * zoom);
+  const cssH = Math.round(baseH * zoom);
+  canvas.width  = cssW * dpr;
+  canvas.height = cssH * dpr;
+  canvas.style.width  = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0); // reset before scaling (Safari fix)
+  ctx.scale(dpr * zoom, dpr * zoom);
+
+  // Background
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, baseW, baseH);
+
+  // Fretboard wood
+  ctx.fillStyle = '#5c3310';
+  ctx.fillRect(leftPad, topPad, scaleLen, boardHeight);
+
+  // Wood grain
+  ctx.save();
+  ctx.globalAlpha = 0.07;
+  for (let i = 0; i < 14; i++) {
+    const gy = topPad + (boardHeight / 14) * i + 3;
+    ctx.fillStyle = i % 2 === 0 ? '#ffcc88' : '#3a1800';
+    ctx.fillRect(leftPad, gy, scaleLen, 2);
+  }
+  ctx.restore();
+
+  // Fretboard border
+  ctx.strokeStyle = '#c8a96e';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(leftPad, topPad, scaleLen, boardHeight);
+
+  // Inlay dots
+  for (const f of INLAY_FRETS) {
+    const x1 = leftPad + fretPos[f-1];
+    const x2 = leftPad + fretPos[f];
+    const cx = (x1 + x2) / 2;
+    const cy = topPad + boardHeight / 2;
+    const positions = DOUBLE_FRETS.includes(f)
+      ? [cy - strSpacing * 0.85, cy + strSpacing * 0.85]
+      : [cy];
+    for (const dy of positions) {
+      ctx.beginPath();
+      ctx.arc(cx, dy, 9, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(220,190,120,0.2)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx, dy, 6.5, 0, Math.PI*2);
+      ctx.fillStyle = '#e8d8a0';
+      ctx.fill();
+      ctx.strokeStyle = '#c8a040';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  // Frets
+  for (let f = 1; f <= NUM_FRETS; f++) {
+    const x  = leftPad + fretPos[f];
+    const fw = Math.max(1.2, 3.5 - f * 0.09);
+    ctx.strokeStyle = '#c8b078';
+    ctx.lineWidth = fw;
+    ctx.beginPath();
+    ctx.moveTo(x, topPad - 1);
+    ctx.lineTo(x, topPad + boardHeight + 1);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,240,200,0.28)';
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(x - 1, topPad);
+    ctx.lineTo(x - 1, topPad + boardHeight);
+    ctx.stroke();
+  }
+
+  // Nut
+  ctx.fillStyle = '#f0e8d0';
+  ctx.fillRect(leftPad - 1, topPad - 2, 5, boardHeight + 4);
+  ctx.strokeStyle = '#c8a96e';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(leftPad - 1, topPad - 2, 5, boardHeight + 4);
+
+  // Strings
+  for (let s = 0; s < 6; s++) {
+    const sy    = topPad + s * strSpacing;
+    const gauge = STRING_GAUGES[s];
+    const thick = 1.2 + gauge * 130;
+    ctx.beginPath();
+    ctx.moveTo(leftPad, sy + 1);
+    ctx.lineTo(leftPad + scaleLen, sy + 1);
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = thick + 1.5;
+    ctx.stroke();
+    const grad = ctx.createLinearGradient(0, sy - thick, 0, sy + thick);
+    if (s < 3) {
+      grad.addColorStop(0, '#f8f0d8');
+      grad.addColorStop(0.4, '#d4c080');
+      grad.addColorStop(1, '#7a5828');
+    } else {
+      grad.addColorStop(0, '#e0d090');
+      grad.addColorStop(0.4, '#a88838');
+      grad.addColorStop(1, '#584020');
+    }
+    ctx.beginPath();
+    ctx.moveTo(leftPad, sy);
+    ctx.lineTo(leftPad + scaleLen, sy);
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = thick;
+    ctx.stroke();
+  }
+
+  // --- Draw notes and intervals ---
+  // Note name: centred in fret space, NO circle, fixed font size
+  // Interval: small circle pinned to the RIGHT fret wire of its fret space
+
+  const NOTE_FONT_SIZE  = 11;  // fixed, never scales with fret width
+  const INT_CIRCLE_R    = 9.5; // interval circle radius
+
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+
+  for (let s = 0; s < 6; s++) {
+    const openNote = OPEN_STRINGS[s];
+    const sy = topPad + s * strSpacing;
+
+    for (let f = 0; f <= NUM_FRETS; f++) {
+      const noteIdx  = (openNote + f) % 12;
+      const interval = (noteIdx - rootIdx + 12) % 12;
+      const inScale  = scaleIntervals.includes(interval);
+      const noteName = NOTES[noteIdx];
+      const intName  = INTERVAL_NAMES[interval];
+      const col      = getNoteColor(interval, inScale, isBlues);
+
+      // Skip out-of-scale entirely when toggle is on
+      if (hideOut && !inScale) continue;
+
+      // Fret centre x (for note name label)
+      let noteCX;
+      if (f === 0) {
+        // Open string — place left of nut
+        noteCX = leftPad - 22;
+      } else {
+        noteCX = (leftPad + fretPos[f-1] + leftPad + fretPos[f]) / 2;
+      }
+
+      // Note name — no circle, centred in fret space
+      ctx.font      = (col.bold ? '700 ' : '400 ') + NOTE_FONT_SIZE + 'px sans-serif';
+      ctx.fillStyle = col.text;
+      ctx.fillText(noteName, noteCX, sy);
+
+      // Interval circle — pinned to right fret wire
+      let intX;
+      if (f === 0) {
+        intX = leftPad - 4; // just left of nut for open strings
+      } else {
+        intX = leftPad + fretPos[f] - INT_CIRCLE_R - 2;
+      }
+
+      // Circle
+      ctx.beginPath();
+      ctx.arc(intX, sy, INT_CIRCLE_R, 0, Math.PI*2);
+      ctx.fillStyle   = col.bg;
+      ctx.fill();
+      ctx.strokeStyle = col.border;
+      ctx.lineWidth   = inScale ? 1.5 : 0.8;
+      ctx.stroke();
+
+      // Interval label inside circle
+      const intFs = intName.length > 2 ? 8.5 : 9.5;
+      ctx.font      = (col.bold ? '700 ' : '400 ') + intFs + 'px sans-serif';
+      ctx.fillStyle = col.text;
+      ctx.fillText(intName, intX, sy + 0.5);
+    }
+  }
+
+  // Fret numbers — further below fretboard
+  ctx.fillStyle    = '#7a7a8a';
+  ctx.font         = '11px sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'top';
+  for (let f = 1; f <= NUM_FRETS; f++) {
+    const cx = (leftPad + fretPos[f-1] + leftPad + fretPos[f]) / 2;
+    ctx.fillText(f, cx, topPad + boardHeight + 18);
+  }
+
+  // String name labels
+  ctx.font         = '13px sans-serif';
+  ctx.textAlign    = 'right';
+  ctx.textBaseline = 'middle';
+  for (let s = 0; s < 6; s++) {
+    const sy = topPad + s * strSpacing;
+    ctx.fillStyle = '#c8a96e';
+    ctx.fillText(STRING_NAMES[s], leftPad - 36, sy);
+  }
+
+  buildScaleTable(key, scaleName, rootIdx, scaleIntervals, isBlues);
+}
+
+function buildScaleTable(key, scaleName, rootIdx, scaleIntervals, isBlues) {
+  const table = document.getElementById('scaleTable');
+  table.innerHTML = '';
+
+  // All 12 chromatic semitones starting from root
+  // Row 1: scale degree number (1, 2, 3… for notes in scale; blank for others)
+  // Row 2: enharmonic note name — bold if in scale, dim if not
+  // Row 3: interval name — coloured if in scale, dim if not
+
+  function intCellClass(interval) {
+    if (!scaleIntervals.includes(interval)) return 'cell-out';
+    if (interval === 0) return 'cell-root';
+    if ((interval === 3 || interval === 4)) return 'cell-third';
+    if (interval === 7) return 'cell-fifth';
+    if (interval === 6 && isBlues) return 'cell-blue5';
+    return 'cell-scale';
+  }
+
+  // Row 1 — scale degrees
+  const tr1 = document.createElement('tr');
+  let degCell = document.createElement('td');
+  degCell.className = 'row-label';
+  degCell.textContent = 'Degree';
+  tr1.appendChild(degCell);
+
+  let degCounter = 0;
+  for (let i = 0; i < 12; i++) {
+    const interval = i; // semitones above root
+    const inScale  = scaleIntervals.includes(interval);
+    const td       = document.createElement('td');
+    if (inScale) {
+      degCounter++;
+      td.className    = 'deg-in';
+      td.textContent  = degCounter;
+    } else {
+      td.className    = 'deg-out';
+      td.textContent  = '';
+    }
+    tr1.appendChild(td);
+  }
+  table.appendChild(tr1);
+
+  // Row 2 — chromatic note names (enharmonic), bold if in scale
+  const tr2 = document.createElement('tr');
+  let noteCell = document.createElement('td');
+  noteCell.className  = 'row-label';
+  noteCell.textContent = 'Notes';
+  tr2.appendChild(noteCell);
+
+  for (let i = 0; i < 12; i++) {
+    const noteIdx = (rootIdx + i) % 12;
+    const inScale = scaleIntervals.includes(i);
+    const td      = document.createElement('td');
+    td.className  = inScale ? 'note-in' : 'note-out';
+    td.textContent = ENHARMONIC[noteIdx];
+    tr2.appendChild(td);
+  }
+  table.appendChild(tr2);
+
+  // Row 3 — interval names, coloured
+  const tr3 = document.createElement('tr');
+  let intCell = document.createElement('td');
+  intCell.className   = 'row-label';
+  intCell.textContent = 'Interval';
+  tr3.appendChild(intCell);
+
+  for (let i = 0; i < 12; i++) {
+    const td = document.createElement('td');
+    td.className  = intCellClass(i);
+    td.textContent = INTERVAL_NAMES[i];
+    tr3.appendChild(td);
+  }
+  table.appendChild(tr3);
+}
+
+// Zoom — start smaller on mobile so canvas fits
+const ZOOM_STEPS = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
+let zoomIdx = window.innerWidth < 768 ? 2 : 5; // 0.7 on mobile, 1.0 on desktop
+
+function updateZoom() {
+  zoom = ZOOM_STEPS[zoomIdx];
+  document.getElementById('zoomLabel').textContent = Math.round(zoom * 100) + '%';
+  draw();
+}
+
+function init() {
+  zoom = ZOOM_STEPS[zoomIdx];
+  document.getElementById('zoomLabel').textContent = Math.round(zoom * 100) + '%';
+  document.getElementById('zoomIn').addEventListener('click',  () => { if (zoomIdx < ZOOM_STEPS.length-1) { zoomIdx++; updateZoom(); } });
+  document.getElementById('zoomOut').addEventListener('click', () => { if (zoomIdx > 0) { zoomIdx--; updateZoom(); } });
+  document.getElementById('hideOutOfScale').addEventListener('change', draw);
+  document.getElementById('keySelect').addEventListener('change', draw);
+  document.getElementById('scaleSelect').addEventListener('change', draw);
+  draw();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>
